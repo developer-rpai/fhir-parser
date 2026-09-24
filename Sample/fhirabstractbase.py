@@ -4,6 +4,7 @@
 #  Base class for all FHIR elements.
 
 import sys
+import re
 import logging
 
 
@@ -173,6 +174,14 @@ class FHIRAbstractBase(object):
                 except Exception as e:
                     value = None
                     err = e
+            
+            # FHIR R5 serializes `integer64` values as JSON strings (to avoid
+            # precision loss in floating point libraries), so accept valid
+            # integer strings where an `int` is expected. Anything else still
+            # fails the type check below.
+            if int == typ and isinstance(value, str) \
+                    and re.fullmatch(r'[0]|[-+]?[1-9][0-9]*', value) is not None:
+                value = int(value)
             
             # got a value, test if it is of required type and assign
             if value is not None:
