@@ -57,6 +57,11 @@ class FHIRAbstractBase(object):
         self._owner = None
         """ Points to the parent resource, if there is one. """
         
+        self._primitive_companions = {}
+        """ Underscore-prefixed primitive companions (e.g. `_questionnaire`)
+        seen without their base value at construction, remembered so that
+        `as_json()` can round-trip them. """
+        
         if jsondict is not None:
             if strict:
                 self.update_with_json(jsondict)
@@ -214,6 +219,12 @@ class FHIRAbstractBase(object):
             if _value is not None:
                 valid.add(_jsname)
                 found.add(_jsname)
+                # Remember value-less primitive companions (e.g. `_questionnaire`
+                # carrying extensions while the value itself is absent) so that
+                # `as_json()` can round-trip them and they satisfy non-optional
+                # cardinality there as well.
+                if value is None:
+                    self._primitive_companions[_jsname] = _value
             
             # report errors
             if err is not None:
@@ -222,6 +233,12 @@ class FHIRAbstractBase(object):
         # were there missing non-optional entries?
         if len(nonoptionals) > 0:
             for miss in nonoptionals - found:
+                # A primitive element may be present only through its
+                # underscore-prefixed companion (e.g. `_questionnaire`
+                # carrying extensions while the value itself is absent);
+                # that satisfies the element's presence for cardinality.
+                if '_' + miss in found:
+                    continue
                 errs.append(KeyError("Non-optional property \"{}\" on {} is missing"
                     .format(miss, self)))
         
@@ -257,7 +274,14 @@ class FHIRAbstractBase(object):
             
             err = None
             value = getattr(self, name)
+            _jsname = '_' + jsname
             if value is None:
+                # Re-emit a remembered value-less primitive companion (e.g.
+                # `_questionnaire`) so it round-trips, counting it as found so
+                # it satisfies non-optional cardinality.
+                if _jsname in self._primitive_companions:
+                    js[_jsname] = self._primitive_companions[_jsname]
+                    found.add(of_many or jsname)
                 continue
             
             if is_list:
